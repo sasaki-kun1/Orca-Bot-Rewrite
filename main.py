@@ -38,7 +38,7 @@ async def main():
     for attempt in range(2):
         try:
             await load()
-            await client.start('ODIzNjk3ODMxMjgxNTU3NTM0.GVG02u.kZDO0hvEpdlcEY5nEYeHU9mR-E7jRVqnu9fts4')
+            await client.start('TOKEN')
         except Exception as e:
             print(f"Failed to start bot: {e}")
             if attempt == 0:
