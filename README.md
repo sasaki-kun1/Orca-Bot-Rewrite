@@ -1,0 +1,2 @@
+# Orca-Bot-Rewrite
+This repository contains code for my Discord Bot named Orca. This is a complete rewrite from the original. The purpose of this rewrite is to support Discord slash commands, create new commands, and clean up/fix old code from the original.
