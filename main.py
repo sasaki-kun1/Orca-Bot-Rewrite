@@ -4,16 +4,41 @@ import discord
 import sys
 import math
 import os
+import logging
+import datetime
 
 # import Necesssary Utilities
 from discord.ext import commands
-from discord import app_commands
+#from discord import app_commands
 from discord.utils import get
 
 # basic Discord Bot Necessities
 intents = discord.Intents.all()
 intents.members = True
-client = commands.Bot(command_prefix = "`", intents = intents, help_command = None)
+client = commands.Bot(command_prefix="`", intents=intents, help_command=None)
+
+# create a logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# create a console handler and set its level to INFO
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+
+# create a file handler and set its level to INFO
+current_date = datetime.date.today().strftime("%Y-%m-%d")
+log_file = f"log_{current_date}.txt"
+file_handler = logging.FileHandler(filename=log_file, mode='a')
+file_handler.setLevel(logging.INFO)
+
+# create a formatter and add it to the handlers
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+file_handler.setFormatter(formatter)
+
+# add the handlers to the logger
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
 
 # Load All Cogs
 async def load():
@@ -25,26 +50,26 @@ async def load():
                 await client.load_extension(f'cogs.{filename[:-3]}')
                 loaded_cogs += 1
             except Exception as e:
-                print(f"Failed to load extension {filename}: {e}")
+                logger.error(f"Failed to load extension {filename}: {e}")
                 failed_cogs.append(filename)
-    print(f"Loaded {loaded_cogs} cogs successfully.")
+    logger.info(f"Loaded {loaded_cogs} cogs successfully.")
     if failed_cogs:
-        print(f"Failed to load {len(failed_cogs)} cog(s): {', '.join(failed_cogs)}")
+        logger.warning(f"Failed to load {len(failed_cogs)} cog(s): {', '.join(failed_cogs)}")
     else:
-        print("All cogs loaded successfully.")
+        logger.info("All cogs loaded successfully.")
 
 # Run the Client
 async def main():
     for attempt in range(2):
         try:
             await load()
-            await client.start('TOKEN')
+            await client.start('CLIENT_HERE')
         except Exception as e:
-            print(f"Failed to start bot: {e}")
+            logger.error(f"Failed to start bot: {e}")
             if attempt == 0:
-                print("Retrying...")
+                logger.info("Retrying...")
             else:
-                print("Failed to load again. Check the server and restart.")
+                logger.error("Failed to load again. Check the server and restart.")
                 break
 
 if __name__ == '__main__':
