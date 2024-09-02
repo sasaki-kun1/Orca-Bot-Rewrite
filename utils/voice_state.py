@@ -7,8 +7,12 @@ import random
 from async_timeout import timeout
 from datetime import datetime
 import gc
+import logging
 from utils.views import QueuePages, NowPlayingButtons
 from utils.yt_source import YTDLSource, Song, YTDLError, VoiceError
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
 
 class SongQueue(asyncio.Queue):
     def __getitem__(self, item):
@@ -56,6 +60,7 @@ class VoiceState:
     async def add_song(self, song):
         await self.songs.put(song)
         await self.add_song_message(song)
+
     def __del__(self):
         self.audio_player.cancel()
 
@@ -77,7 +82,7 @@ class VoiceState:
 
     @property
     def is_playing(self):
-        return self.voice and self.current
+        return self.voice and self.current and self.voice.is_playing()
 
     async def change_volume(self, delta: int, interaction: discord.Interaction):
         new_volume = self._volume + (delta / 100)
@@ -97,13 +102,16 @@ class VoiceState:
                 try:
                     async with timeout(None):
                         self.current = await self.songs.get()
+                        logging.info(f"Playing song: {self.current.source.title}")
                 except asyncio.TimeoutError:
+                    logging.error("TimeoutError: No song found in the queue.")
                     self.bot.loop.create_task(self.stop())
                     self.exists = False
                     return
 
             self.current.source.volume = self._volume
             async with self.lock:  # Ensure this section is thread-safe
+                logging.info("Starting to play the current song...")
                 self.voice.play(self.current.source, after=self.play_next_song)
 
             await self.update_now_playing_embed()  # Ensure this is called after playback starts
@@ -112,19 +120,28 @@ class VoiceState:
             await self.next.wait()
 
             if self.loop and self.current:
+                logging.info("Looping the current song...")
                 await self.songs.put(self.current)
+            elif not self.songs.empty():
+                logging.info("Next song in queue, playing it...")
+                self.current = await self.songs.get()
+                await self.audio_player_task()  # Recursively call the task to play the next song
+            else:
+                logging.info("No more songs in the queue.")
 
             self.bot.loop.create_task(self.update_queue_message())
 
     def play_next_song(self, error=None):
         if error:
-            print(f'Error in play_next_song: {error}')
+            logging.error(f'Error in play_next_song: {error}')
             raise VoiceError(str(error))
+        logging.info("Song finished playing, moving to next song...")
         self.next.set()
 
     def skip(self):
         self.skip_votes.clear()
         if self.is_playing:
+            logging.info("Skipping the current song...")
             self.voice.stop()
 
     async def stop(self):
@@ -143,8 +160,6 @@ class VoiceState:
         ctx = self._ctx
         items_per_page = 10
         pages = math.ceil(len(self.songs) / items_per_page)
-        start = 0
-        end = items_per_page
         embeds = []
 
         if len(self.songs) == 0:
@@ -167,7 +182,7 @@ class VoiceState:
                 self.queue_message = await ctx.send(embed=embeds[0], view=view)
         except discord.errors.HTTPException as e:
             if e.status == 401:
-                print("Invalid Webhook Token. Unable to edit queue message.")
+                logging.error("Invalid Webhook Token. Unable to edit queue message.")
                 self.queue_message = None
             else:
                 raise
@@ -194,26 +209,24 @@ class VoiceState:
             else:
                 self.now_playing_message = await ctx.send(embed=embed, view=NowPlayingButtons(ctx))
         except discord.errors.HTTPException as e:
-            print(f"Failed to edit message: {e}")
+            logging.error(f"Failed to edit message: {e}")
             self.now_playing_message = await ctx.send(embed=embed, view=NowPlayingButtons(ctx))
         # Clear the action message after updating the embed
         self.action_message = ""
 
-
-
     async def inactivity_timer(self):
+        logging.info("Inactivity timer started.")
         while self.exists:
             await asyncio.sleep(1800)  # 45 minutes
 
             # Check if there are no songs in the queue and nothing is currently playing
-            if not self.is_playing and not self.songs.qsize() > 0:
+            if not self.is_playing and self.songs.qsize() == 0:
                 # Also check if the bot is connected to a voice channel
                 if self.voice is not None:
                     await self._ctx.send("Leaving voice channel due to inactivity.")
                     await self.stop()
-                    print("Bot stopped due to inactivity.")
+                    logging.info("Inactivity timer ended: Bot stopped due to inactivity.")
                 else:
-                    print("Bot was not connected to a voice channel, no need to stop.")
+                    logging.info("Inactivity timer ended: Bot was not connected to a voice channel, no need to stop.")
             else:
-                print("Bot is active, resetting inactivity timer.")
-
+                logging.info("Inactivity timer refreshed: Bot is active, resetting inactivity timer.")

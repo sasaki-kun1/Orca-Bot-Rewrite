@@ -1,13 +1,15 @@
 import discord
 import gc
 from discord.ext import commands
+from datetime import datetime
 
 class QueuePages(discord.ui.View):
     def __init__(self, ctx: commands.Context, pages: list, current_page: int = 0):
-        super().__init__(timeout=None)  # Set timeout to None
+        super().__init__(timeout=1800)  # Set timeout to 5 minutes
         self.ctx = ctx
         self.pages = pages
         self.current_page = current_page
+        self.message = None  # To store the message object
 
         self.previous_button = discord.ui.Button(label='Previous', style=discord.ButtonStyle.primary, custom_id='previous')
         self.next_button = discord.ui.Button(label='Next', style=discord.ButtonStyle.primary, custom_id='next')
@@ -19,6 +21,7 @@ class QueuePages(discord.ui.View):
         self.update_buttons()
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        self.ctx.voice_state.last_activity = datetime.utcnow()  # Reset inactivity timer
         return interaction.user == self.ctx.author
 
     def update_buttons(self):
@@ -37,10 +40,19 @@ class QueuePages(discord.ui.View):
             self.update_buttons()
             await interaction.response.edit_message(embed=self.pages[self.current_page], view=self)
 
+    async def on_timeout(self):
+        # Disable all buttons when timeout occurs
+        for child in self.children:
+            child.disabled = True
+        if self.message:
+            await self.message.edit(view=self)
+
+
 class NowPlayingButtons(discord.ui.View):
     def __init__(self, ctx: commands.Context):
-        super().__init__(timeout=None)
+        super().__init__(timeout=1800)  # Set timeout to 5 minutes
         self.ctx = ctx
+        self.message = None  # To store the message object
 
         buttons = [
             ("Pause", self.pause_callback, "⏸️"),
@@ -59,6 +71,7 @@ class NowPlayingButtons(discord.ui.View):
             self.add_item(button)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        self.ctx.voice_state.last_activity = datetime.utcnow()  # Reset inactivity timer
         return interaction.user == self.ctx.author
 
     async def pause_callback(self, interaction: discord.Interaction):
@@ -125,14 +138,23 @@ class NowPlayingButtons(discord.ui.View):
         if ctx.voice_state:
             await ctx.voice_state.change_volume(-10, interaction)  # Decrease volume by 10%
         await interaction.response.defer()
-        
+
+    async def on_timeout(self):
+        # Disable all buttons when timeout occurs
+        for child in self.children:
+            child.disabled = True
+        if self.message:
+            await self.message.edit(view=self)
+
+
 class ClearQueueConfirmation(discord.ui.View):
     def __init__(self, ctx: commands.Context, voice_state):
-        super().__init__(timeout=None)  # Set timeout to None
+        super().__init__(timeout=1800)  # Set timeout to 5 minutes
         self.ctx = ctx
         self.voice_state = voice_state
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        self.ctx.voice_state.last_activity = datetime.utcnow()  # Reset inactivity timer
         return interaction.user == self.ctx.author
 
     @discord.ui.button(label="Yes", style=discord.ButtonStyle.danger)

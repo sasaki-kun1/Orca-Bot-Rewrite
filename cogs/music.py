@@ -8,10 +8,13 @@ from spotipy.oauth2 import SpotifyClientCredentials
 from utils.voice_state import VoiceState
 from utils.views import QueuePages, ClearQueueConfirmation, NowPlayingButtons
 from utils.yt_source import YTDLSource, Song, YTDLError
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 # Spotify credentials
-SPOTIPY_CLIENT_ID = 'CLIENT_HERE'
-SPOTIPY_CLIENT_SECRET = 'SECRET_HERE'
+SPOTIPY_CLIENT_ID = 'YOUR ID'
+SPOTIPY_CLIENT_SECRET = 'YOUR SECRET'
 
 sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
     client_id=SPOTIPY_CLIENT_ID,
@@ -219,24 +222,32 @@ class Music(commands.Cog):
         user_hash = ctx.author.discriminator
         destination = ctx.author.voice.channel
 
+        # Ensure bot is connected to the voice channel
         if not ctx.voice_state.voice:
             ctx.voice_state.voice = await destination.connect()
+            logging.info(f"Bot connected to the voice channel: {destination.name}")
 
         try:
             async with ctx.typing():
-                print(f'{timestamp} - {ctx.author.display_name}#{user_hash} used the play command in server "{server_name}" ({server_id})')
+                logging.info(f"{timestamp} - {ctx.author.display_name}#{user_hash} used the play command in server '{server_name}' ({server_id})")
+                logging.info(f"Attempting to play: {search}")
 
+                # Handle Spotify playlist separately
                 if 'spotify.com/playlist' in search:
                     await self.play_spotify_playlist(ctx, search)
                 else:
+                    # Clean the search string
                     search = search.replace(":", "")  # Remove colons from search
+
+                    # Attempt to create source from search
                     sources = await YTDLSource.create_source(ctx, search, loop=self.bot.loop)
-                    print(f'Sources: {sources}')  # Debugging line to log sources
+                    logging.info(f"Sources: {sources}")  # Debugging line to log sources
 
                     if sources is None or len(sources) == 0:
                         await ctx.send("No results found.")
                         return
 
+                    # Add the sources to the queue
                     if len(sources) > 1:
                         for source in sources:
                             song = Song(source)
@@ -253,19 +264,27 @@ class Music(commands.Cog):
                     # Ensure that the Now Playing embed is updated properly
                     await ctx.voice_state.update_now_playing_embed()
 
+                # Start the audio player task if it's not already running
                 if not ctx.voice_state.is_playing:
+                    logging.info("Starting audio playback.")
                     await ctx.voice_state.audio_player_task()
 
                 # Respond with "request sent" after processing
-                await ctx.send("Request sent.")
+                await ctx.send("Your request has been added to the queue.")
+                logging.info("Request successfully added to the queue.")
 
         except YTDLError as e:
+            logging.error(f"YTDLError: {e}")
             await ctx.send('An error occurred while processing this request: {}'.format(str(e)))
         except Exception as e:
+            logging.error(f"An unexpected error occurred in the play command: {e}")
             await ctx.send(f'An unexpected error occurred: {e}')
-            print(f'Error details: {e}')  # Debugging line to log the error details
+            logging.error(f"Error details: {e}")  # Debugging line to log the error details
 
+        # Perform garbage collection
         gc.collect()
+        logging.info("Garbage collection complete.")
+
 
     async def play_spotify_playlist(self, ctx, url):
         playlist_id = url.split('/')[-1].split('?')[0]
